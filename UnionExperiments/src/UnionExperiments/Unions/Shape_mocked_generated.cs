@@ -1,4 +1,5 @@
-﻿using UnionExperiments.Glue;
+﻿using System.Runtime.InteropServices;
+using DiscriminatedUnions;
 
 namespace UnionExperiments.Unions;
 
@@ -9,62 +10,72 @@ public readonly record struct Rectangle(double Width, double Length);
 
 public readonly record struct Circle(double Radius);
 
+[StructLayout(LayoutKind.Explicit)]
 public readonly struct Shape
 {
 
-    private enum Cases { PointCase, RectangleCase, CircleCase }
+    private enum Cases : byte { NotYetInitilaised, PointCase, RectangleCase, CircleCase }
 
-    private readonly Point _casePoint;
-    private readonly Rectangle _caseRectangle;
-    private readonly Circle _caseCircle;
+    [FieldOffset(0)] private readonly Cases _validCase;
 
-    private readonly Cases _validCase;
+    [FieldOffset(1)] private readonly Type<Point> _typePoint = Type<Point>.Value;
+    [FieldOffset(2)] private readonly Type<Rectangle> _typeRectangle = Type<Rectangle>.Value;
+    [FieldOffset(3)] private readonly Type<Circle> _typeCircle = Type<Circle>.Value;
 
-    private readonly Type<Point> _typePoint;
-    private readonly Type<Rectangle> _typeRectangle;
-    private readonly Type<Circle> _typeCircle;
+    [FieldOffset(8)] private readonly Point _casePoint;
+    [FieldOffset(8)] private readonly Rectangle _caseRectangle;
+    [FieldOffset(8)] private readonly Circle _caseCircle;
 
-    private readonly bool _initialised;
 
-    private Shape(Point casePoint, Rectangle caseRectangle, Circle caseCircle, Cases validCase)
+    private Shape(Point casePoint)
     {
+        _caseCircle = default;
+        _caseRectangle = default;
         _casePoint = casePoint;
-        _caseRectangle = caseRectangle;
-        _caseCircle = caseCircle;
 
-        _validCase = validCase;
-
-        _typePoint = Type<Point>.Instance;
-        _typeRectangle = Type<Rectangle>.Instance;
-        _typeCircle = Type<Circle>.Instance;
-
-        _initialised = true;
+        _validCase = Cases.PointCase;
     }
 
-    public static Shape AsPoint() => new(new Point(), default, default, Cases.PointCase);
+    private Shape(Rectangle caseRectangle)
+    {
+        _casePoint = default;
+        _caseCircle = default;
+        _caseRectangle = caseRectangle;
 
-    public static Shape AsRectangle(double width, double length) =>
-        new(default, new Rectangle(width, length), default, Cases.RectangleCase);
+        _validCase = Cases.RectangleCase;
+    }
 
-    public static Shape AsCircle(double radius) => new(default, default, new Circle(radius), Cases.CircleCase);
+    private Shape(Circle caseCircle)
+    {
+        _casePoint = default;
+        _caseRectangle = default;
+        _caseCircle = caseCircle;
+
+        _validCase = Cases.CircleCase;
+    }
+
+    public static Shape AsPoint() => new(new Point());
+
+    public static Shape AsRectangle(double width, double length) => new(new Rectangle(width, length));
+
+    public static Shape AsCircle(double radius) => new(new Circle(radius));
 
     public object Case => _validCase switch {
         Cases.PointCase => _typePoint,
         Cases.RectangleCase => _typeRectangle,
-        Cases.CircleCase or _ => _typeCircle
+        Cases.CircleCase => _typeCircle,
+        _ => throw new InvalidOperationException("Incorrectly initialised Shape with no valid case")
     };
 
-    public Point Point => _casePoint;
+    public Point Point => _validCase is Cases.PointCase ? _casePoint : default;
 
-    public Rectangle Rectangle => _caseRectangle;
+    public Rectangle Rectangle => _validCase is Cases.RectangleCase ? _caseRectangle : default;
 
-    public Circle Circle => _caseCircle;
+    public Circle Circle => _validCase is Cases.CircleCase ? _caseCircle : default;
 
 
     public void Deconstruct(out object type, out object? value)
     {
-        if (!_initialised) throw null!;
-
         switch (_validCase)
         {
             case Cases.PointCase:
@@ -76,10 +87,11 @@ public readonly struct Shape
                 value = (_caseRectangle.Width, _caseRectangle.Length);
                 break;
             case Cases.CircleCase:
-            default:
                 type = _typeCircle;
                 value = _caseCircle.Radius;
                 break;
+            default:
+                throw new InvalidOperationException("Incorrectly initialised Shape with no valid case");
         }
     }
 }

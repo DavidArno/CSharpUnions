@@ -1,4 +1,4 @@
-﻿using UnionExperiments.Glue;
+﻿using DiscriminatedUnions;
 
 namespace UnionExperiments.Unions;
 
@@ -27,8 +27,8 @@ public readonly partial struct Option<T>
 
         _validCase = validCase;
 
-        _typeNone = Type<None>.Instance;
-        _typeSome = Type<Some<T>>.Instance;
+        _typeNone = Type<None>.Value;
+        _typeSome = Type<Some<T>>.Value;
         _initialised = true;
     }
 

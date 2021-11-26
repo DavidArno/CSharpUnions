@@ -1,9 +1,5 @@
-﻿using UnionExperiments.Glue;
+﻿namespace UnionExperiments.Unions;
 
-namespace UnionExperiments.Unions;
-
-[DiscriminatedUnion]
-[NoTryGet]
 public readonly partial struct Option<T>
 {
     public static partial Option<T> AsNone();

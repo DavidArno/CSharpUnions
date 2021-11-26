@@ -1,5 +1,5 @@
 ﻿using NUnit.Framework;
-using UnionExperiments.Glue;
+using DiscriminatedUnions;
 using UnionExperiments.Unions;
 using static NUnit.Framework.Assert;
 

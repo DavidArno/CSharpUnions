@@ -1,4 +1,5 @@
-﻿using UnionExperiments.Glue;
+﻿
+using DiscriminatedUnions;
 
 namespace UnionExperiments.Unions;
 
