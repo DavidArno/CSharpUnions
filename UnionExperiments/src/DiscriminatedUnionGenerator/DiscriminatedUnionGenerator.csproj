@@ -13,7 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\DiscriminatedUnions\DiscriminatedUnions.csproj" />
+    <ProjectReference Include="..\DiscriminatedUnions\DiscriminatedUnions.csproj" GeneratePathProperty="true" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

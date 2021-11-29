@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 
@@ -30,8 +31,7 @@ public class DisciminatedUnionSourceGenerator : ISourceGenerator
                 declaration is ClassDeclarationSyntax or StructDeclarationSyntax or RecordDeclarationSyntax &&
                 declaration.AttributeLists
                     .SelectMany(x => x.Attributes)
-                    .Where(a => a.Name.ToString() == DiscriminatedUnionAttribute.UnionDefinitionAttributeName)
-                    .Any())
+                    .Any(x => x.Name.ToString() == DiscriminatedUnionAttribute.UnionDefinitionAttributeName))
             {
                 UnionTypeDeclarations.Add(declaration);
             }
@@ -61,6 +61,14 @@ public class DisciminatedUnionSourceGenerator : ISourceGenerator
 
     private string GenerateDiscriminatedUnionFromDefinition(TypeDeclarationSyntax type)
     {
+        foreach (var member in type.Members)
+        {
+            if (member is not RecordDeclarationSyntax record) throw new InvalidOperationException();
+
+            var name = record.Identifier.ValueText;
+            var parameters = record.ParameterList?.Parameters;
+        }
+
         return "";
     }
 
