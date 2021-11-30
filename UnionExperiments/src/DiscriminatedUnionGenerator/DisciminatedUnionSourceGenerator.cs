@@ -4,45 +4,66 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using DiscriminatedUnionGenerator;
 
 namespace DIscriminatedUnions;
 
 [Generator]
-public class DisciminatedUnionSourceGenerator : ISourceGenerator
+public class DisciminatedUnionSourceGenerator : IIncrementalGenerator
 {
-    private SyntaxReceiver? _syntaxReceiver;
-
-    public void Initialize(GeneratorInitializationContext context)
+    public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        context.RegisterForSyntaxNotifications(() => _syntaxReceiver = new SyntaxReceiver());
-        //Debugger.Launch();
+        var unionDefinitionDeclarations = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (x, _) => IsDecoratedApplicableTypeDeclaration(x),
+                transform: static (x, _) => MaybeGetUnionDefinitionDeclarationSyntax(x))
+            .Where(static x => x is not null);
+
+        var compilationAndUnionDefinitions = 
+            context.CompilationProvider.Combine(unionDefinitionDeclarations.Collect());
+
+        context.RegisterSourceOutput(
+            compilationAndUnionDefinitions,
+            static (context, source) => Execute(source.Left, source.Right!, context));
     }
+    private static bool IsDecoratedApplicableTypeDeclaration(SyntaxNode syntaxNode)
+        => syntaxNode is TypeDeclarationSyntax declaration &&
+           declaration is ClassDeclarationSyntax or StructDeclarationSyntax or RecordDeclarationSyntax &&
+           declaration.AttributeLists.Any();
 
-    private class SyntaxReceiver : ISyntaxReceiver
+    private static TypeDeclarationSyntax? MaybeGetUnionDefinitionDeclarationSyntax(GeneratorSyntaxContext context)
     {
-        public HashSet<TypeDeclarationSyntax> UnionTypeDeclarations { get; } = new();
+        var syntaxNode = (TypeDeclarationSyntax)context.Node;
 
-        public void OnVisitSyntaxNode(SyntaxNode syntaxNode)
+        foreach (var attributeList in syntaxNode.AttributeLists)
         {
-            if (syntaxNode is TypeDeclarationSyntax declaration &&
-                declaration is ClassDeclarationSyntax or StructDeclarationSyntax or RecordDeclarationSyntax &&
-                declaration.AttributeLists
-                    .SelectMany(x => x.Attributes)
-                    .Any(x => x.Name.ToString() == DiscriminatedUnionAttribute.UnionDefinitionAttributeName))
+            foreach (var attribute in attributeList.Attributes)
             {
-                UnionTypeDeclarations.Add(declaration);
+                if (attribute.Name.ToString() == DiscriminatedUnionAttribute.UnionDefinitionAttributeName)
+                {
+                    return syntaxNode;
+                }
             }
         }
+
+        return null;
     }
 
-    public void Execute(GeneratorExecutionContext context)
+    private static void Execute(
+        Compilation compilation, 
+        ImmutableArray<TypeDeclarationSyntax> unionDefinitions, 
+        SourceProductionContext context)
     {
+        if (unionDefinitions.IsDefaultOrEmpty) return;
+
+
         var cancellationToken = context.CancellationToken;
 
-        foreach (var type in _syntaxReceiver!.UnionTypeDeclarations)
+        foreach (var type in unionDefinitions.Distinct())
         {
             try
             {
@@ -59,11 +80,11 @@ public class DisciminatedUnionSourceGenerator : ISourceGenerator
         }
     }
 
-    private string GenerateDiscriminatedUnionFromDefinition(TypeDeclarationSyntax type)
+    private static string GenerateDiscriminatedUnionFromDefinition(TypeDeclarationSyntax type)
     {
         foreach (var member in type.Members)
         {
-            if (member is not RecordDeclarationSyntax record) throw new InvalidOperationException();
+            if (member is not RecordDeclarationSyntax record) throw new UnionDefinitionBadMemberException(member);
 
             var name = record.Identifier.ValueText;
             var parameters = record.ParameterList?.Parameters;
@@ -72,10 +93,10 @@ public class DisciminatedUnionSourceGenerator : ISourceGenerator
         return "";
     }
 
-    private string GenerateHintName(TypeDeclarationSyntax type)
-        => $"{CreateUnionNameFromDefinitionName(type)}.g.cs";
+    private static string GenerateHintName(TypeDeclarationSyntax type)
+        => $"{CreateUnionNameFromDefinitionName(type)}.generated.cs";
 
-    private string CreateUnionNameFromDefinitionName(TypeDeclarationSyntax type) 
+    private static string CreateUnionNameFromDefinitionName(TypeDeclarationSyntax type) 
         => type.Identifier.Text is var identifier && identifier.EndsWith("Definition") 
             ? identifier.Replace("Definition", "")
             : throw new UnionDefinitionNameException(type);
