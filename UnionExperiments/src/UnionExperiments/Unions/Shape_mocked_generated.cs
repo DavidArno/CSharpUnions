@@ -64,7 +64,8 @@ public readonly struct Shape
         Cases.PointCase => _typePoint,
         Cases.RectangleCase => _typeRectangle,
         Cases.CircleCase => _typeCircle,
-        _ => throw new InvalidOperationException("Incorrectly initialised Shape with no valid case")
+        Cases.NotYetInitilaised or _ => 
+            throw new InvalidOperationException("Incorrectly initialised Shape with no valid case")
     };
 
     public Point Point => _validCase is Cases.PointCase ? _casePoint : default;
