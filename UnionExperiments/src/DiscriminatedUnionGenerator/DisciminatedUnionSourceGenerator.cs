@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Text;
 using DiscriminatedUnions;
 using DIscriminatedUnions;
@@ -91,26 +92,156 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
         var caseFields = GenerateCasesValueFields(cases, casesValuesFieldsOffset);
         var constructors = GenerateConstructors(unionName, cases);
         var initializers = GenerateInitializers(unionName, cases);
+        var caseTypeProperty = GenerateCaseTypeProperty(unionName, cases);
+        var caseValueProperties = GenerateCaseValueProperties(cases);
 
-        return "";
+        var nameSpace = GenerateNameSpace(type.Parent);
+        var usings = GenerateUsings(type, new Usings());
+
+        var builder = new StringBuilder();
+        builder.Append(usings.GetFormattedCompilationUnitUsings());
+        builder.Append(nameSpace);
+        builder.Append(usings.GetFormattedNamespaceUsings());
+        builder.Append(casesTypes);
+
+        builder.Append("    [StructLayout(LayoutKind.Explicit)]\n");
+        builder.Append($"    public readonly struct {unionName}\n    {{\n");
+
+        builder.Append(casesEnum);
+        builder.Append(caseTypeFields);
+        builder.Append(caseFields);
+        builder.Append(constructors);
+        builder.Append(initializers);
+        builder.Append(caseTypeProperty);
+        builder.Append(caseValueProperties);
+
+        builder.Append("    }\n}\n");
+
+        var x = builder.ToString();
+        return x;
     }
 
-    private static string GenerateCaseValueProperties
+    private class Usings
+    {
+        private IEnumerable<string> _compilationUnitUsings = new List<string>();
+        private IEnumerable<string> _namespaceUsings = new List<string>();
+        private bool _systemRuntimeInteropServicesSpecified;
+        private bool _discriminatedUnionsSpecified;
+
+        public Usings SetCompilationUnitUsings(IEnumerable<string> usings)
+        {
+            _compilationUnitUsings = usings;
+            UpdateUsingsSpecifiedStatus(usings);
+            return this;
+        }
+
+        public Usings SetNamespaceUsings(IEnumerable<string> usings)
+        {
+            _namespaceUsings = usings;
+            UpdateUsingsSpecifiedStatus(usings);
+            return this;
+        }
+
+        public void UpdateUsingsSpecifiedStatus(IEnumerable<string> usings)
+        {
+            foreach (var usingStatement in usings)
+            {
+                if (usingStatement == "using System.Runtime.InteropServices;")
+                {
+                    _systemRuntimeInteropServicesSpecified = true;
+                }
+
+                if (usingStatement == "using DiscriminatedUnions;")
+                {
+                    _discriminatedUnionsSpecified = true;
+                }
+            }
+        }
+
+        public string GetFormattedCompilationUnitUsings() => $"{string.Join("\n", _compilationUnitUsings)}\n\n";
+
+        public string GetFormattedNamespaceUsings()
+        {
+            var builder = new StringBuilder();
+
+            foreach (var usingStatement in _namespaceUsings)
+            {
+                builder.Append($"    {usingStatement}\n");
+            }
+
+            if (!_systemRuntimeInteropServicesSpecified)
+            {
+                builder.Append("    using System.Runtime.InteropServices;\n");
+            }
+
+            if (!_discriminatedUnionsSpecified)
+            {
+                builder.Append("    using DiscriminatedUnions;\n");
+            }
+
+            builder.Append("\n");
+
+            return builder.ToString();
+        }
+    }
+
+    private static string GenerateNameSpace(SyntaxNode? node) => node switch {
+        null => "",
+        FileScopedNamespaceDeclarationSyntax s => FormatNamespace(s.Name),
+        NamespaceDeclarationSyntax s => FormatNamespace(s.Name),
+        _ => GenerateNameSpace(node.Parent)
+    };
+
+    private static string FormatNamespace(NameSyntax name) => $"namespace {name}\n{{\n";
+
+    private static Usings GenerateUsings(SyntaxNode? node, Usings usingsSoFar)
+    {
+        return node switch {
+            null => usingsSoFar,
+            NamespaceDeclarationSyntax s => GenerateUsings(s.Parent, CaptureNameSpaceUsings(s, usingsSoFar)),
+            CompilationUnitSyntax s => GenerateUsings(s.Parent, CaptureCompilationUnitUsings(s, usingsSoFar)),
+            var n => GenerateUsings(n.Parent, usingsSoFar)
+        };
+
+        static Usings CaptureNameSpaceUsings(
+            NamespaceDeclarationSyntax namespaceDeclaration,
+            Usings usingsFoundSoFar)
+            => usingsFoundSoFar.SetNamespaceUsings(namespaceDeclaration.Usings.Select(x => x.ToString()));
+
+        static Usings CaptureCompilationUnitUsings(
+            CompilationUnitSyntax compilationUnit,
+            Usings usingsSoFar)
+            => usingsSoFar.SetCompilationUnitUsings(compilationUnit.Usings.Select(x => x.ToString()));
+    }
+
+
+    private static string GenerateCaseValueProperties(List<UnionCase> cases)
+    {
+        var builder = new StringBuilder();
+        foreach (var name in cases.Select(x => x.CaseName))
+        {
+            builder.Append(
+                $"        public {name} {name} => _validCase is Cases.{name}Case ? _case{name} : default;\n");
+        }
+
+        return builder.ToString();
+    }
+
     private static string GenerateCaseTypeProperty(string unionName, List<UnionCase> cases)
     {
         var builder = new StringBuilder();
 
-        builder.Append("    public object Case => _validCase switch {\n");
+        builder.Append("        public object Case => _validCase switch {\n");
         foreach (var caseName in cases.Select(x => x.CaseName))
         {
-            builder.Append($"        Cases.{caseName}Case => _type{caseName},\n");
+            builder.Append($"            Cases.{caseName}Case => _type{caseName},\n");
         }
 
-        builder.Append("        Cases.NotCorrectlyInitialized or _ =>\n");
+        builder.Append("            Cases.NotCorrectlyInitialized or _ =>\n");
         builder.Append(
-            "            throw new InvalidOperationException(\"Incorrectly initialized " +
-            $"{unionName} with no valid case\")");
-        builder.Append("    };\n\n");
+            "                throw new InvalidOperationException(\"Incorrectly initialized " +
+            $"{unionName} with no valid case\")\n");
+        builder.Append("        };\n\n");
 
         return builder.ToString();
     }
@@ -122,11 +253,11 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
         foreach (var unionCase in cases)
         {
             var parameters = string.Join(", ", unionCase.CaseParameters.Select(
-                x => GenerateLowerCaseType(x.TypeName, x.TypeParameters, x.isNullable)));
+                x => $"{GenerateType(x.TypeName, x.TypeParameters, x.isNullable)} {CamelCase(x.ParameterName)}"));
 
             var arguments = string.Join(", ", unionCase.CaseParameters.Select(x => CamelCase(x.ParameterName)));
 
-            builder.Append($"    public static {unionName} As{unionCase.CaseName}({parameters}) => " +
+            builder.Append($"        public static {unionName} As{unionCase.CaseName}({parameters}) => " +
                            $"new (new {unionCase.CaseName}({arguments}));\n");
         }
 
@@ -137,8 +268,8 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
 
     private static string GenerateCasesEnum(List<UnionCase> cases)
     {
-        return $"    private enum Cases : byte {{ {string.Join(", ", EnumValues(cases))} }}\n\n" +
-                "    [FieldOffset(0)] private readonly Cases _validCase;";
+        return $"        private enum Cases : byte {{ {string.Join(", ", EnumValues(cases))} }}\n\n" +
+                "        [FieldOffset(0)] private readonly Cases _validCase;\n";
 
         static IEnumerable<string> EnumValues(List<UnionCase> cases)
         {
@@ -159,11 +290,10 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
         foreach (var name in cases.Select(x => x.CaseName))
         {
             builder.Append(
-                $"    [FieldOffset({++offset})] private readonly Type<{name}> _type{name} = " +
-                $"Type<{name}>.Value;\n");
+                $"        [FieldOffset({++offset})] private readonly Type<{name}> _type{name} = Type<{name}>.Value;\n");
         }
 
-        builder.Append("/n");
+        builder.Append("\n");
 
         return (builder.ToString(), offset);
     }
@@ -219,7 +349,7 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
         {
             var builder = new StringBuilder();
 
-            builder.Append($"    readonly record struct ");
+            builder.Append($"    public readonly record struct ");
             builder.Append($"{GenerateType(unionCase.CaseName, unionCase.TypeParameters, false)}");
             builder.Append($"({GenerateCaseParameterList(unionCase.CaseParameters)});\n\n");
 
@@ -239,7 +369,7 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
 
         foreach (var name in cases.Select(x => x.CaseName))
         {
-            builder.Append($"    [FieldOffset({offset})] private readonly {name} _case{name};\n");
+            builder.Append($"        [FieldOffset({offset})] private readonly {name} _case{name};\n");
         }
 
         builder.Append("\n");
@@ -253,40 +383,33 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
 
         foreach (var name in cases.Select(x => x.CaseName))
         {
-            builder.Append($"    private {unionName}({name} case{name})\n");
-            builder.Append("    {\n");
+            builder.Append($"        private {unionName}({name} case{name})\n");
+            builder.Append("        {\n");
 
             foreach (var otherName in cases.Select(x => x.CaseName))
             {
                 if (otherName == name) continue;
 
-                builder.Append($"        _case{otherName} = default;\n");
+                builder.Append($"            _case{otherName} = default;\n");
             }
 
-            builder.Append($"        _case{name} = case{name};\n\n");
-            builder.Append($"        _validCase = Cases.{name}Case;\n");
-            builder.Append("    }\n\n");
+            builder.Append($"            _case{name} = case{name};\n");
+            builder.Append($"            _validCase = Cases.{name}Case;\n");
+            builder.Append("        }\n\n");
         }
 
         return builder.ToString();
     }
 
-    private static string GenerateType(string typeName, IList<string> typeParameters, bool isNullable)
-        => GenerateType(typeName, typeParameters, isNullable, x => x);
-
-    private static string GenerateLowerCaseType(string typeName, IList<string> typeParameters, bool isNullable)
-        => GenerateType(typeName, typeParameters, isNullable, CamelCase);
-
     private static string GenerateType(
         string typeName, 
         IList<string> typeParameters, 
-        bool isNullable,
-        Func<string, string> styleTypeName)
+        bool isNullable)
     {
         var genericParameters = typeParameters.Any() ? $"<{string.Join(", ", typeParameters)}>" : "";
         var nullableSymbol = isNullable ? "?" : "";
 
-        return $"{styleTypeName(typeName)}{genericParameters}{nullableSymbol}";
+        return $"{typeName}{genericParameters}{nullableSymbol}";
     }
 
 

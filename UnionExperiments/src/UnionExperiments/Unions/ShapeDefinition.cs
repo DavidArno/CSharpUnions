@@ -1,10 +1,14 @@
-﻿using DiscriminatedUnions;
+﻿global using static System.Math;
+
+using DiscriminatedUnions;
 
 using ListOfInt = System.Collections.Generic.List<int>;
 
-namespace UnionExperiments.Unions;
+namespace UnionExperiments.Unions {
+    using System;
 
-record R<T>(List<T> L);
+
+    record R<T>(List<T> L);
 
 [DiscriminatedUnion]
 record ShapeDefinition
@@ -15,5 +19,6 @@ record ShapeDefinition
 
     record Circle(double Radius);
 
-    record struct Cabbage<T>(Point? Point, R<T> X, ListOfInt Li);
+//    record struct Cabbage<T>(Point? Point, R<T> X, ListOfInt Li);
+}
 }

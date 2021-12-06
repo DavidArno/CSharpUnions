@@ -12,7 +12,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\DiscriminatedUnions\DiscriminatedUnions.csproj" />
+	<ProjectReference Include="..\..\src\DiscriminatedUnionGenerator\DiscriminatedUnionGenerator.csproj" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
+	<ProjectReference Include="..\..\src\DiscriminatedUnions\DiscriminatedUnions.csproj" ReferenceOutputAssembly="true" OutputItemType="Analyzer" />
     <ProjectReference Include="..\..\src\UnionExperiments\UnionExperiments.csproj" />
   </ItemGroup>
 
