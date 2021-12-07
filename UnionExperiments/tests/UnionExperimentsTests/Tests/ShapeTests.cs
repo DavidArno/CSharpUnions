@@ -1,5 +1,5 @@
 ﻿using NUnit.Framework;
-using UnionExperiments.Unions;
+using UnionExperiments;
 using DiscriminatedUnions;
 
 namespace UnionExperimentsTests;

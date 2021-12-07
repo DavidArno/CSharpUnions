@@ -1,8 +1,6 @@
 ﻿using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text;
-using DiscriminatedUnions;
-using DIscriminatedUnions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -43,7 +41,7 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
         {
             foreach (var attribute in attributeList.Attributes)
             {
-                if (attribute.Name.ToString() == DiscriminatedUnionAttribute.UnionDefinitionAttributeName)
+                if (attribute.Name.ToString() == "DiscriminatedUnion")
                 {
                     return syntaxNode;
                 }
@@ -84,14 +82,18 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
     private static string GenerateDiscriminatedUnionFromDefinition(string unionName, TypeDeclarationSyntax type)
     {
         var cases = GetUnionCases(type);
-        var casesTypes = GenerateCasesTypes(cases);
-        var casesEnum = GenerateCasesEnum(cases);
-        var (caseTypeFields, offset) = GenerateCaseTypeFieldsAndOffsets(cases);
+        var (casesTypes, typeParameters) = GenerateCasesTypes(cases);
+
+        var unionTypeParameters = typeParameters.Any() ? $"<{string.Join(", ", typeParameters)}>" : "";
+        var unionType = $"{unionName}{unionTypeParameters}";
+
+        var casesEnum = GenerateCasesEnum(cases, false);
+        var (caseTypeFields, offset) = GenerateCaseTypeFieldsAndOffsets(cases, false);
 
         var casesValuesFieldsOffset = (offset / 8 + 1) * 8;
-        var caseFields = GenerateCasesValueFields(cases, casesValuesFieldsOffset);
+        var caseFields = GenerateCasesValueFields(cases, casesValuesFieldsOffset, false);
         var constructors = GenerateConstructors(unionName, cases);
-        var initializers = GenerateInitializers(unionName, cases);
+        var initializers = GenerateInitializers(unionType, cases);
         var caseTypeProperty = GenerateCaseTypeProperty(unionName, cases);
         var caseValueProperties = GenerateCaseValueProperties(cases);
 
@@ -104,8 +106,8 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
         builder.Append(usings.GetFormattedNamespaceUsings());
         builder.Append(casesTypes);
 
-        builder.Append("    [StructLayout(LayoutKind.Explicit)]\n");
-        builder.Append($"    public readonly struct {unionName}\n    {{\n");
+        //builder.Append("    [StructLayout(LayoutKind.Explicit)]\n");
+        builder.Append($"    public readonly struct {unionType}\n    {{\n");
 
         builder.Append(casesEnum);
         builder.Append(caseTypeFields);
@@ -126,7 +128,6 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
         private IEnumerable<string> _compilationUnitUsings = new List<string>();
         private IEnumerable<string> _namespaceUsings = new List<string>();
         private bool _systemRuntimeInteropServicesSpecified;
-        private bool _discriminatedUnionsSpecified;
 
         public Usings SetCompilationUnitUsings(IEnumerable<string> usings)
         {
@@ -150,11 +151,6 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
                 {
                     _systemRuntimeInteropServicesSpecified = true;
                 }
-
-                if (usingStatement == "using DiscriminatedUnions;")
-                {
-                    _discriminatedUnionsSpecified = true;
-                }
             }
         }
 
@@ -172,11 +168,6 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
             if (!_systemRuntimeInteropServicesSpecified)
             {
                 builder.Append("    using System.Runtime.InteropServices;\n");
-            }
-
-            if (!_discriminatedUnionsSpecified)
-            {
-                builder.Append("    using DiscriminatedUnions;\n");
             }
 
             builder.Append("\n");
@@ -218,10 +209,13 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
     private static string GenerateCaseValueProperties(List<UnionCase> cases)
     {
         var builder = new StringBuilder();
-        foreach (var name in cases.Select(x => x.CaseName))
+        foreach (var unionCase in cases)
         {
+            var name = unionCase.CaseName;
+            var type = GenerateType(name, unionCase.TypeParameters, false);
+
             builder.Append(
-                $"        public {name} {name} => _validCase is Cases.{name}Case ? _case{name} : default;\n");
+                $"        public {type} {name} => _validCase is Cases.{name}Case ? _case{name} : default;\n");
         }
 
         return builder.ToString();
@@ -246,7 +240,7 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
         return builder.ToString();
     }
 
-    private static string GenerateInitializers(string unionName, List<UnionCase> cases)
+    private static string GenerateInitializers(string unionType, List<UnionCase> cases)
     {
         var builder = new StringBuilder();
 
@@ -257,8 +251,9 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
 
             var arguments = string.Join(", ", unionCase.CaseParameters.Select(x => CamelCase(x.ParameterName)));
 
-            builder.Append($"        public static {unionName} As{unionCase.CaseName}({parameters}) => " +
-                           $"new (new {unionCase.CaseName}({arguments}));\n");
+            var type = GenerateType(unionCase.CaseName, unionCase.TypeParameters, false);
+            builder.Append($"        public static {unionType} As{unionCase.CaseName}({parameters}) => " +
+                           $"new(new {type}({arguments}));\n");
         }
 
         builder.Append("\n");
@@ -266,10 +261,12 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
         return builder.ToString();
     }
 
-    private static string GenerateCasesEnum(List<UnionCase> cases)
+    private static string GenerateCasesEnum(List<UnionCase> cases, bool explicitLayout)
     {
+        var layout = explicitLayout ? "[FieldOffset(0)] " : "";
+
         return $"        private enum Cases : byte {{ {string.Join(", ", EnumValues(cases))} }}\n\n" +
-                "        [FieldOffset(0)] private readonly Cases _validCase;\n";
+               $"        {layout}private readonly Cases _validCase;\n";
 
         static IEnumerable<string> EnumValues(List<UnionCase> cases)
         {
@@ -282,15 +279,21 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
         }
     }
 
-    private static (string code, int offset) GenerateCaseTypeFieldsAndOffsets(List<UnionCase> cases)
+    private static (string code, int offset) GenerateCaseTypeFieldsAndOffsets(
+        List<UnionCase> cases,
+        bool explicitLayout)
     {
         var builder = new StringBuilder();
         var offset = 0;
 
-        foreach (var name in cases.Select(x => x.CaseName))
+        foreach (var unionCase in cases)
         {
+            var name = unionCase.CaseName;
+            var type = GenerateType(name, unionCase.TypeParameters, false);
+            var layout = explicitLayout ? $"[FieldOffset({++offset})] " : "";
+
             builder.Append(
-                $"        [FieldOffset({++offset})] private readonly Type<{name}> _type{name} = Type<{name}>.Value;\n");
+                $"        {layout}private readonly Type<{type}> _type{name} = Type<{type}>.Value;\n");
         }
 
         builder.Append("\n");
@@ -335,15 +338,19 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
         return cases;
     }
 
-    private static string GenerateCasesTypes(List<UnionCase> cases)
+    private static (string typeDefinitions, List<string> typeParameters) GenerateCasesTypes(List<UnionCase> cases)
     {
         var builder = new StringBuilder();
+        var typeParameters = new List<string>();
+
         foreach (var unionCase in cases)
         {
             builder.Append(GenerateCaseType(unionCase));
+
+            typeParameters.AddRange(unionCase.TypeParameters);
         }
 
-        return builder.ToString();
+        return (builder.ToString(), typeParameters);
 
         static string GenerateCaseType(UnionCase unionCase)
         {
@@ -363,13 +370,17 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
                     p => $"{GenerateType(p.TypeName, p.TypeParameters, p.isNullable)} {p.ParameterName}"));
     }
 
-    private static string GenerateCasesValueFields(List<UnionCase> cases, int offset)
+    private static string GenerateCasesValueFields(List<UnionCase> cases, int offset, bool explicitLayout)
     {
         var builder = new StringBuilder();
 
-        foreach (var name in cases.Select(x => x.CaseName))
+        foreach (var unionCase in cases)
         {
-            builder.Append($"        [FieldOffset({offset})] private readonly {name} _case{name};\n");
+            var name = unionCase.CaseName;
+            var type = GenerateType(name, unionCase.TypeParameters, false);
+            var layout = explicitLayout ? $"[FieldOffset({offset})] " : "";
+
+             builder.Append($"        {layout}private readonly {type} _case{name};\n");
         }
 
         builder.Append("\n");
@@ -381,9 +392,12 @@ public class DiscriminatedUnionSourceGenerator : IIncrementalGenerator
     {
         var builder = new StringBuilder();
 
-        foreach (var name in cases.Select(x => x.CaseName))
+        foreach (var unionCase in cases)
         {
-            builder.Append($"        private {unionName}({name} case{name})\n");
+            var name = unionCase.CaseName;
+            var type = GenerateType(name, unionCase.TypeParameters, false);
+
+            builder.Append($"        private {unionName}({type} case{name})\n");
             builder.Append("        {\n");
 
             foreach (var otherName in cases.Select(x => x.CaseName))

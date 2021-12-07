@@ -4,15 +4,12 @@
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+	<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+	<CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)\GeneratedFiles</CompilerGeneratedFilesOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\DiscriminatedUnionGenerator\DiscriminatedUnionGenerator.csproj" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
-    <ProjectReference Include="..\DiscriminatedUnions\DiscriminatedUnions.csproj" ReferenceOutputAssembly="true" OutputItemType="Analyzer" />
+	  <ProjectReference Include="..\DiscriminatedUnionGenerator\DiscriminatedUnionGenerator.csproj" OutputItemType="Analyzer" />
+	  <ProjectReference Include="..\DiscriminatedUnions\DiscriminatedUnions.csproj" />
   </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Glue\" />
-  </ItemGroup>
-
 </Project>

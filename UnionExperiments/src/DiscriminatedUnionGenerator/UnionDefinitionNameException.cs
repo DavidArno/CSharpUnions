@@ -1,7 +1,7 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace DIscriminatedUnions;
+namespace DiscriminatedUnionGenerator;
 
 internal class UnionDefinitionNameException : Exception, IDiagnosticException
 {

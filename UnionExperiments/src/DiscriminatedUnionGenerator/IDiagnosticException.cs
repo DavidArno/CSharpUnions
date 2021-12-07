@@ -1,6 +1,6 @@
 ﻿using Microsoft.CodeAnalysis;
 
-namespace DIscriminatedUnions;
+namespace DiscriminatedUnionGenerator;
 
 internal interface IDiagnosticException
 {
