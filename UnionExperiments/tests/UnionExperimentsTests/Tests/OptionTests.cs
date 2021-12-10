@@ -14,10 +14,10 @@ namespace UnionExperimentsTests
             var option = Option<int>.AsSome(42);
 
             Multiple(() => {
-                IsTrue(option is { Case: Type<Some<int>> });
+                IsTrue(option is { Case: Option.SomeCase });
                 AreEqual(42, option.Some.Value);
                 AreEqual(42, option switch {
-                    { Case: Type<Some<int>>, Some.Value: var x } => x,
+                    { Case: Option.SomeCase, Some.Value: var x } => x,
                     _ => 0
                 });
             });
@@ -31,7 +31,7 @@ namespace UnionExperimentsTests
             Multiple(() => {
                 AreEqual("yellow", option.Some.Value);
                 AreEqual("yellow", option switch {
-                    { Case: Type<Some<string>>, Some.Value: var x } => x,
+                    { Case: Option.SomeCase, Some.Value: var x } => x,
                     _ => ""
                 });
             });

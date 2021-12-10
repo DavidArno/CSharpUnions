@@ -1,6 +1,5 @@
 ﻿using NUnit.Framework;
 using UnionExperiments;
-using DiscriminatedUnions;
 
 namespace UnionExperimentsTests;
 
@@ -16,9 +15,9 @@ public class ShapeTests
 
         var area = shape switch
         {
-            { Case: Type<Point> } => 0.0,
-            { Case: Type<Rectangle>, Rectangle: { Width: var w, Length: var l } } => w * l,
-            { Case: Type<Circle>, Circle.Radius: var r } => Math.PI * r * r
+            { Case: Shape.PointCase } => 0.0,
+            { Case: Shape.RectangleCase, Rectangle: { Width: var w, Length: var l } } => w * l,
+            { Case: Shape.CircleCase, Circle.Radius: var r } => Math.PI * r * r
         };
 
         Assert.AreEqual(200, area);
@@ -31,9 +30,9 @@ public class ShapeTests
 
         var area = shape switch
         {
-            { Case: Type<Point> } => 0.0,
-            { Case: Type<Rectangle>, Rectangle: { Width: var w, Length: var l } } => w * l,
-            { Case: Type<Circle>, Circle.Radius: var r } => Math.PI * r * r
+            { Case: Shape.PointCase } => 0.0,
+            { Case: Shape.RectangleCase, Rectangle: { Width: var w, Length: var l } } => w * l,
+            { Case: Shape.CircleCase, Circle.Radius: var r } => Math.PI * r * r
         };
 
         Assert.AreEqual(314, (int)area);
@@ -46,9 +45,9 @@ public class ShapeTests
 
         var area = shape switch
         {
-            { Case: Type<Point> } => 0.0,
-            { Case: Type<Rectangle>, Rectangle: { Width: var w, Length: var l } } => w * l,
-            { Case: Type<Circle>, Circle.Radius: var r } => Math.PI * r * r
+            { Case: Shape.PointCase } => 0.0,
+            { Case: Shape.RectangleCase, Rectangle: { Width: var w, Length: var l } } => w * l,
+            { Case: Shape.CircleCase, Circle.Radius: var r } => Math.PI * r * r
         };
 
         Assert.AreEqual(0, area);
